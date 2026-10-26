@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.env
+.env.*
+token
+token.*
+drafts.json

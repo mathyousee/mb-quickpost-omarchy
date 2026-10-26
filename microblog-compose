@@ -1,0 +1,2 @@
+#!/bin/bash
+exec quickshell --no-duplicate --path "$HOME/.config/quickshell/microblog-compose/shell.qml"

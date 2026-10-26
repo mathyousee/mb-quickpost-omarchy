@@ -1,0 +1,109 @@
+#!/usr/bin/python3
+import datetime
+import fcntl
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import uuid
+
+
+def load(path):
+    try:
+        with path.open(encoding="utf-8") as source:
+            os.fchmod(source.fileno(), 0o600)
+            drafts = json.load(source)
+    except FileNotFoundError:
+        return []
+    if not isinstance(drafts, list) or any(
+        not isinstance(draft, dict)
+        or any(not isinstance(draft.get(key), str) for key in ("id", "text", "saved"))
+        or not draft["id"]
+        for draft in drafts
+    ):
+        raise ValueError("Invalid stash file; it has not been overwritten.")
+    if len({draft["id"] for draft in drafts}) != len(drafts):
+        raise ValueError("Duplicate stash IDs; the file has not been overwritten.")
+    for draft in drafts:
+        datetime.datetime.fromisoformat(draft["saved"])
+    return drafts
+
+
+def save(path, drafts):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=".drafts-", delete=False
+        ) as target:
+            temporary = Path(target.name)
+            os.fchmod(target.fileno(), 0o600)
+            json.dump(drafts, target, ensure_ascii=False)
+            target.write("\n")
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def execute(request):
+    if not isinstance(request, dict) or request.get("action") not in ("list", "stash", "delete"):
+        raise ValueError("Expected a list, stash, or delete action.")
+    action = request["action"]
+    draft_id = request.get("id", "")
+    if not isinstance(draft_id, str):
+        raise ValueError("Invalid stash ID.")
+    if action == "stash" and (
+        not isinstance(request.get("text"), str) or not request["text"].strip()
+    ):
+        raise ValueError("Cannot stash an empty note.")
+    if action == "delete" and not draft_id:
+        raise ValueError("A stash ID is required.")
+
+    os.umask(0o077)
+    state_home = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    directory = state_home / "microblog"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory.chmod(0o700)
+    path = directory / "drafts.json"
+    with (directory / ".lock").open("a") as lock:
+        os.fchmod(lock.fileno(), 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        drafts = load(path)
+        if draft_id and not any(draft["id"] == draft_id for draft in drafts):
+            raise ValueError("That stash no longer exists. Reopen Drafts to refresh the list.")
+        if action == "stash":
+            drafts = [draft for draft in drafts if draft["id"] != draft_id]
+            draft_id = draft_id or str(uuid.uuid4())
+            drafts.insert(0, {
+                "id": draft_id,
+                "text": request["text"],
+                "saved": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            })
+            save(path, drafts)
+        elif action == "delete":
+            drafts = [draft for draft in drafts if draft["id"] != draft_id]
+            save(path, drafts)
+        return {"drafts": drafts, "id": draft_id}
+
+
+def main():
+    try:
+        response = execute(json.load(sys.stdin))
+    except (OSError, ValueError) as error:
+        print(f"Micro.blog drafts: {error}", file=sys.stderr)
+        return 1
+    json.dump(response, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

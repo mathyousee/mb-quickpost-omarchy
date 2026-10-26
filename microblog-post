@@ -1,0 +1,30 @@
+#!/bin/bash
+set -uo pipefail
+fail() { notify-send -u critical -a Micro.blog "Micro.blog: failed" "$1"; exit 1; }
+if [[ ${1:-} == --stdin ]]; then
+  content=$(cat && printf .) || fail "Cannot read the draft."
+  content=${content%.}
+else
+  content=$(omarchy menu input "Micro.blog: write a short note" --width 1100) || exit 0
+fi
+[[ $content =~ [^[:space:]] ]] || exit 0
+token_file="$HOME/.config/microblog/token"
+[[ -r $token_file ]] || fail "Create $token_file with your Micro.blog app token (permissions 600)."
+token=$(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$token_file") || fail "Cannot read token file."
+[[ -n $token && $token != *[$' \t\r\n']* ]] || fail "Paste one app token into $token_file, below the comment."
+umask 077
+work=$(mktemp -d) || fail "Cannot create temporary response files."
+trap 'rm -f "$work/headers" "$work/body" "$work/error"; rmdir "$work"' EXIT
+if ! status=$(printf 'Authorization: Bearer %s\n' "$token" |
+  curl --silent --show-error --fail-with-body --connect-timeout 10 --max-time 30 \
+    -X POST https://micro.blog/micropub --header @- \
+    --data-urlencode h=entry --data-urlencode content@/dev/fd/3 3< <(printf '%s' "$content") \
+    --dump-header "$work/headers" --output "$work/body" --write-out '%{http_code}' 2>"$work/error"); then
+  fail "Request failed (HTTP ${status:-unknown}). $(head -c 400 "$work/error") $(head -c 600 "$work/body")"
+fi
+[[ $status == 2?? ]] || fail "HTTP $status: $(head -c 600 "$work/body")"
+url=$(awk 'tolower($0) ~ /^location:/ {sub(/^[^:]*:[ \t]*/, ""); sub(/\r$/, ""); url=$0} END {print url}' "$work/headers")
+if [[ -z $url ]] && jq -e . "$work/body" >/dev/null 2>&1; then
+  url=$(jq -r 'if type == "object" then .url // empty else empty end | select(type == "string")' "$work/body")
+fi
+notify-send -a Micro.blog -t 6000 "Micro.blog: posted" "${url:-Your note was published.}"
