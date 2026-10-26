@@ -8,10 +8,6 @@ printf '# Test fixture\nfixture-token\n' > "$fixture/.config/microblog/token"
 export HOME="$fixture" TEST_CONTENT=$'First line & 100% + café\nSecond line <not markup>'
 export TEST_MODE=success
 
-omarchy() {
-  [[ ${TEST_MODE} != cancel ]] || return 1
-  printf '%s' "$TEST_CONTENT"
-}
 notify-send() { printf '%s\n' "$@" > "$HOME/notice"; }
 curl() {
   local auth arg header='' body='' content=''
@@ -45,7 +41,7 @@ curl() {
     *) return 94;;
   esac
 }
-export -f omarchy notify-send curl
+export -f notify-send curl
 
 check() {
   local mode=$1 expected_status=$2 expected_notice=$3 status=0
@@ -59,17 +55,19 @@ check() {
   else
     grep -Fq "$expected_notice" "$HOME/notice"
   fi
-  printf 'PASS %s %s\n' "$mode" "${*:-single-line}"
+  printf 'PASS %s %s\n' "$mode" "${*:-no arguments}"
 }
 
 check success 0 https://example.test/post/1 --stdin
-check success 0 https://example.test/post/1
+check success 1 'Open microblog-compose'
+[[ ! -e $HOME/called ]]
 check json 0 https://example.test/post/2 --stdin
 TEST_CONTENT+=$'\n\n'
 check success 0 https://example.test/post/1 --stdin
 check error 1 Unauthorized --stdin
 check timeout 1 'Timed out' --stdin
-check cancel 0 silent
+TEST_CONTENT=''
+check success 0 silent --stdin
 TEST_CONTENT=$' \t\n'
 check success 0 silent --stdin
 printf '# Placeholder only\n' > "$HOME/.config/microblog/token"

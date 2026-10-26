@@ -1,12 +1,9 @@
 #!/bin/bash
 set -uo pipefail
 fail() { notify-send -u critical -a Micro.blog "Micro.blog: failed" "$1"; exit 1; }
-if [[ ${1:-} == --stdin ]]; then
-  content=$(cat && printf .) || fail "Cannot read the draft."
-  content=${content%.}
-else
-  content=$(omarchy menu input "Micro.blog: write a short note" --width 1100) || exit 0
-fi
+[[ $# == 1 && $1 == --stdin ]] || fail "Open microblog-compose to write a note."
+content=$(cat && printf .) || fail "Cannot read the draft."
+content=${content%.}
 [[ $content =~ [^[:space:]] ]] || exit 0
 token_file="$HOME/.config/microblog/token"
 [[ -r $token_file ]] || fail "Create $token_file with your Micro.blog app token (permissions 600)."

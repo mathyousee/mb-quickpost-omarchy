@@ -2,19 +2,15 @@
 
 A keyboard-driven Micro.blog composer for Omarchy/Hyprland.
 
-Press **SUPER+ALT+M**, type a short note, and press **Enter** to publish.
-**Escape**, empty input, or whitespace-only input does nothing.
-Omarchy's existing input menu and desktop notifications are used; no packages
-were installed. Requires Bash, Omarchy, curl, notify-send, jq, and standard
-Unix utilities already present on this system.
-
-## Multiline composer
-
-Press **SUPER+CTRL+M** for a separate Quickshell composer with wrapping and a
+Press **SUPER+CTRL+M** to open the Quickshell composer with wrapping and a
 live character count. The ~500-character target is advisory, not a hard limit.
 **Enter** inserts a newline; **Ctrl+Enter** or **Post** publishes; **Escape**
-or **Cancel** discards. The existing single-line shortcut and Music TUI binding
-are unchanged.
+or **Cancel** discards. Empty or whitespace-only notes are not posted.
+
+The multiline composer is the only posting interface; the former single-line
+prompt has been removed.
+
+## Composer
 
 Unstashed drafts stay in memory, with no draft, backup, history, or temporary input file.
 The composer sends the text through a pipe to `microblog-post --stdin`;
@@ -52,11 +48,11 @@ in your backups. They are not encrypted or synced by this tool; deleting one is
 not a secure erase of filesystem snapshots or backups.
 
 Storage uses `~/.local/bin/microblog-drafts`, a Python 3 standard-library helper.
-Python 3 was already installed; no new packages were added.
+No third-party Python packages are required.
 
 The launcher is `~/.local/bin/microblog-compose`; its UI is installed at
-`~/.config/quickshell/microblog-compose/shell.qml`. No additional packages or
-Micro.blog token are needed. The additional Hyprland binding is:
+`~/.config/quickshell/microblog-compose/shell.qml`. It uses the Micro.blog app
+token configured during setup below. The Hyprland binding is:
 
 ```lua
 o.bind("SUPER + CTRL + M", "Micro.blog multiline post", os.getenv("HOME") .. "/.local/bin/microblog-compose")
@@ -64,9 +60,9 @@ o.bind("SUPER + CTRL + M", "Micro.blog multiline post", os.getenv("HOME") .. "/.
 
 ## Setup
 
-Requires a current Omarchy installation with its `omarchy menu input` helper,
-Quickshell with Qt Quick Controls, Python 3, curl, notify-send, and jq.
-The example Hyprland bindings below use Omarchy's Lua configuration.
+Requires a current Omarchy installation, Quickshell with Qt Quick Controls,
+Bash, Python 3, curl, notify-send, jq, and standard Unix utilities.
+The example Hyprland binding above uses Omarchy's Lua configuration.
 
 From the cloned repository, install the scripts and composer:
 
@@ -81,9 +77,10 @@ install -Dm 644 shell.qml ~/.config/quickshell/microblog-compose/shell.qml
 chmod 600 ~/.config/microblog/token
 ```
 
-Ensure `~/.local/bin` is on your PATH. Add the Lua binding examples in this
+Ensure `~/.local/bin` is on your PATH. Add the Lua binding example in this
 README to `~/.config/hypr/bindings.lua`, checking for conflicts first and
-choosing different shortcuts if necessary.
+choosing a different shortcut if necessary. When upgrading from the original
+two-prompt version, remove the old `SUPER+ALT+M` binding to `microblog-post`.
 
 1. Open `~/.config/microblog/token` locally in your editor. Paste a Micro.blog
    app token on its own line, below any comment, then save. Do not add quotes or
@@ -91,17 +88,11 @@ choosing different shortcuts if necessary.
    and never commit or share it.
 2. Run `hyprctl reload`, then `hyprctl configerrors` to check the config.
    Hyprland may also automatically load saved configuration changes.
-3. Press **SUPER+ALT+M** and publish a note when ready.
+3. Press **SUPER+CTRL+M** and publish a note when ready.
 
-The installed executable is `~/.local/bin/microblog-post`. This directory was
-already on both the shell and Hyprland PATH. The binding in
-`~/.config/hypr/bindings.lua` is:
-
-```lua
-o.bind("SUPER + ALT + M", "Micro.blog quick post", os.getenv("HOME") .. "/.local/bin/microblog-post")
-```
-
-The script sends a single POST to `https://micro.blog/micropub` with form
+`microblog-compose` opens the editor. `microblog-post --stdin` is its internal
+posting helper, not a separate prompt. The helper sends a single POST to
+`https://micro.blog/micropub` with form
 fields `h=entry` and `content`, using the token as a Bearer authorization header.
 The token is passed to curl through standard input, not command-line arguments.
 Notifications show the returned `Location` header or JSON `url`, when supplied,
@@ -110,7 +101,7 @@ error excerpt. Requests time out after 30 seconds and are never automatically
 retried, to avoid duplicate posts. A timeout can still mean the server published
 the note: check your blog before trying again.
 
-## Project copy
+## Updating
 
 To update an existing installation after editing the project files:
 
@@ -122,7 +113,7 @@ install -Dm 644 shell.qml ~/.config/quickshell/microblog-compose/shell.qml
 ```
 
 The token and saved drafts live outside this repository. To remove the
-hotkeys, remove their bindings and reload Hyprland.
+hotkey, remove its binding and reload Hyprland.
 
 Local, non-network storage and posting checks:
 
